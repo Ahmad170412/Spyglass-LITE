@@ -1,0 +1,45 @@
+spyglass-lite
+=============
+
+This package is a derivative work of Spyglass OSINT.
+
+  Spyglass OSINT — https://github.com/Ahmad170412/Spyglass-OSINT
+  Copyright (c) 2026 Atheer
+  Licensed under the MIT License.
+
+The verification heuristics in src/spyglass_lite/_http.py (bot-challenge,
+not-found and empty-shell detection) are adapted from Spyglass OSINT's
+spyglass/utils.py, which is MIT licensed.
+
+Username site rules
+-------------------
+
+src/spyglass_lite/data/sites.json.gz is a normalized merge of the site
+databases shipped by the following projects. Only rule metadata is
+redistributed; no code is copied.
+
+  Sherlock — https://github.com/sherlock-project/sherlock
+  Copyright (c) 2018 Sherlock Project
+  Licensed under the MIT License.
+
+  Maigret — https://github.com/soxoj/maigret
+  Copyright (c) 2019 soxoj
+  Licensed under the MIT License.
+
+Each site record keeps a "source" field naming the project(s) it came from,
+so any questionable rule can be traced back to its origin.
+
+Not derived from
+----------------
+
+Holehe (https://github.com/megadose/holehe) is licensed under GPL-3.0. No
+Holehe code, data or recipe list is included in this package. The
+registration recipes in src/spyglass_lite/data/registrations.json were
+written independently against publicly documented endpoints.
+
+Data sources queried at runtime
+-------------------------------
+
+This package queries third-party services (RIPEStat, Shodan InternetDB,
+ipwho.is, ip-api.com, Gravatar, LeakCheck, Scylla, and others). Their terms
+of service apply to those requests. No data from them is redistributed.

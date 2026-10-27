@@ -1,0 +1,46 @@
+{
+  "_comment": "Tier B account-existence recipes. Every entry was written independently against a publicly documented endpoint; no Holehe data is used (Holehe is GPL-3.0, this package is MIT). Recipes are opt-in because they can trigger account mail.",
+  "version": 1,
+  "recipes": [
+    {
+      "id": "firefox",
+      "name": "Firefox Accounts",
+      "url": "https://api.accounts.firefox.com/v1/account/status",
+      "method": "POST",
+      "headers": {
+        "content-type": "application/json",
+        "accept": "application/json"
+      },
+      "payload": {
+        "email": "{email}"
+      },
+      "exists_when": {
+        "json_path": "exists",
+        "equals": true
+      },
+      "absent_when": {
+        "json_path": "exists",
+        "equals": false
+      },
+      "note": "Documented Firefox Accounts status endpoint."
+    },
+    {
+      "id": "duolingo",
+      "name": "Duolingo",
+      "url": "https://www.duolingo.com/2017-06-30/users",
+      "method": "GET",
+      "params": {
+        "email": "{email}"
+      },
+      "exists_when": {
+        "json_path": "users",
+        "non_empty": true
+      },
+      "absent_when": {
+        "json_path": "users",
+        "empty": true
+      },
+      "note": "Public profile lookup by email. Experimental."
+    }
+  ]
+}

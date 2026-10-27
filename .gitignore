@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+!build/cache/.gitkeep
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.log
+
+# Bench output is local and may contain personal targets.
+bench/out/
+bench/.env
+bench/.cache/
+bench/results/raw.json
+bench/results/run.log
+bench/results/fields.json
+
+# Live comparison runs against real handles: local evidence, not source.
+compare_results*.txt
