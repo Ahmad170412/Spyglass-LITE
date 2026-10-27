@@ -9,7 +9,7 @@ description = "Importable OSINT recon — username, email, IP, ASN and phone, wi
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Atheer" }]
 keywords = [
     "osint", "recon", "reconnaissance", "username", "email",
@@ -22,7 +22,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -32,16 +31,12 @@ classifiers = [
 ]
 
 # httpx: async HTTP with connection pooling and proxy support.
-# dnspython: MX / SPF / DMARC. The stdlib socket module cannot query anything
-# that is not an A/AAAA record, so this is not optional for the email module.
-#
-# dnspython 2.9.0 fixes CVE-2026-114605 (GHSA-45c3-73f7-pv4m, 7.5) but requires
-# Python 3.11. 3.10 reached end of life in October 2026 and cannot be patched;
-# the gap is recorded in docs/AUDIT.md rather than silently left open.
+# The stdlib socket module cannot query anything that is not an A/AAAA
+# record, so this is not optional for the email module. dnspython 2.9.0 fixes
+# CVE-2026-114605; the package requires Python 3.11+.
 dependencies = [
     "httpx>=0.27",
-    "dnspython>=2.9.0; python_version >= '3.11'",
-    "dnspython>=2.6,<2.9; python_version < '3.11'",
+    "dnspython>=2.9.0",
 ]
 
 [project.optional-dependencies]

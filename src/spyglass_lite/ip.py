@@ -56,8 +56,9 @@ async def resolve(target: str) -> str:
 async def _geo(http: httpx.AsyncClient, ip: str, config: Config) -> tuple[Geo | None, str]:
     """Two geolocation opinions, primary first.
 
-    ipwho.is is primary because ip-api.com's free tier rate-limits per
-    minute, and a rate-limited lookup used to erase the whole geo block.
+    ipwho.is is primary because it is HTTPS and does not rate-limit per minute
+    like ip-api.com's free tier. The ip-api.com fallback has been replaced with
+    ipapi.co, which offers HTTPS and a generous free tier without an API key.
     """
     result = await fetch(http, "GET", f"https://ipwho.is/{ip}", timeout=config.timeout)
     data = _json(result)
@@ -83,25 +84,24 @@ async def _geo(http: httpx.AsyncClient, ip: str, config: Config) -> tuple[Geo | 
             "",
         )
 
-    fields = "status,country,regionName,city,isp,org,as,lat,lon,timezone,query"
-    result = await fetch(
-        http, "GET", f"http://ip-api.com/json/{ip}?fields={fields}", timeout=config.timeout
-    )
+    result = await fetch(http, "GET", f"https://ipapi.co/{ip}", timeout=config.timeout)
     data = _json(result)
     if isinstance(data, Mapping) and data.get("status") == "success":
         return (
             Geo(
-                country=str(data.get("country") or ""),
-                region=str(data.get("regionName") or ""),
+                country=str(data.get("country_name") or ""),
+                region=str(data.get("region") or ""),
                 city=str(data.get("city") or ""),
                 isp=str(data.get("isp") or ""),
-                org=str(data.get("org") or ""),
-                asn=str(data.get("as") or ""),
+                org=str(data.get("org") or data.get("company") or ""),
+                asn=str(data.get("asn") or ""),
                 location=(
-                    f"{data.get('lat')},{data.get('lon')}" if data.get("lat") is not None else ""
+                    f"{data.get('latitude')},{data.get('longitude')}"
+                    if data.get("latitude") is not None and data.get("longitude") is not None
+                    else ""
                 ),
                 timezone=str(data.get("timezone") or ""),
-                source="ip-api.com (fallback)",
+                source="ipapi.co",
             ),
             "",
         )

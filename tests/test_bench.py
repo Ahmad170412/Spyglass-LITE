@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from bench.score import false_positives, misses, score_run
 from bench.tools import ToolRun, _absorb, domain_of
+
 from spyglass_lite.models import Profile, Unknown, UsernameResult
 
 ORACLE = {
@@ -77,9 +78,7 @@ def test_helpers_name_the_right_domains():
         unknown={"gitlab.com": "blocked"},
     )
 
-    assert false_positives(scored, ORACLE) == [
-        ("bitbucket.org", "https://bitbucket.org/handle")
-    ]
+    assert false_positives(scored, ORACLE) == [("bitbucket.org", "https://bitbucket.org/handle")]
     assert misses(scored, ORACLE) == ["gitlab.com"]
 
 

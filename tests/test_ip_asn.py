@@ -109,18 +109,18 @@ async def test_ip_geolocation_falls_back(ip_network, respx_mock):
     respx_mock.get("https://ipwho.is/1.1.1.1").mock(
         return_value=httpx.Response(200, json={"success": False})
     )
-    respx_mock.get(url__startswith="http://ip-api.com/json/1.1.1.1").mock(
+    respx_mock.get(url__startswith="https://ipapi.co/1.1.1.1").mock(
         return_value=httpx.Response(
             200,
             json={
                 "status": "success",
-                "country": "Australia",
-                "regionName": "Queensland",
+                "country_name": "Australia",
+                "region": "Queensland",
                 "city": "Brisbane",
                 "isp": "Cloudflare",
-                "as": "AS13335 Cloudflare",
-                "lat": -27.4,
-                "lon": 153.0,
+                "asn": "AS13335",
+                "latitude": -27.4,
+                "longitude": 153.0,
                 "timezone": "Australia/Brisbane",
             },
         )
@@ -132,7 +132,7 @@ async def test_ip_geolocation_falls_back(ip_network, respx_mock):
     result = await Spyglass().aip("1.1.1.1")
 
     assert result.geo is not None
-    assert result.geo.source == "ip-api.com (fallback)"
+    assert result.geo.source == "ipapi.co"
     assert result.ports == []
     assert any("internetdb" in error for error in result.errors)
 
@@ -153,7 +153,9 @@ async def test_hostname_target_is_resolved(ip_network, respx_mock):
 
 async def test_geo_failure_is_reported_not_raised(ip_network, respx_mock):
     respx_mock.get("https://ipwho.is/1.1.1.1").mock(return_value=httpx.Response(500))
-    respx_mock.get(url__startswith="http://ip-api.com/json/").mock(return_value=httpx.Response(500))
+    respx_mock.get(url__startswith="https://ipapi.co/1.1.1.1").mock(
+        return_value=httpx.Response(500)
+    )
     respx_mock.get("https://internetdb.shodan.io/1.1.1.1").mock(return_value=httpx.Response(404))
 
     result = await Spyglass().aip("1.1.1.1")

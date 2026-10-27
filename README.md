@@ -97,7 +97,7 @@ pip install spyglass-lite
 pip install "spyglass-lite[phone]"    # optional: phonenumbers
 ```
 
-Python 3.10+. Two core dependencies: `httpx` and `dnspython`.
+Python 3.11+. Core dependencies: `httpx` and `dnspython>=2.9.0`.
 
 ---
 

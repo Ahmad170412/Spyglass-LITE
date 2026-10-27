@@ -317,7 +317,7 @@ async def test_registrations_run_when_requested(fake_dns, respx_mock):
 
 def test_missing_dependency_message_is_actionable():
     error = MissingDependency("phonenumbers", "phone", "phone")
-    assert "pip install spyglass-lite[phone]" in str(error)
+    assert "python -m pip install spyglass-lite[phone]" in str(error)
 
 
 # ─── sites= : inline recipes and bare domains ────────────

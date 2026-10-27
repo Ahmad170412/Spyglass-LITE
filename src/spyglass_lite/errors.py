@@ -25,7 +25,7 @@ class MissingDependency(SpyglassError, ImportError):
         self.module = module
         super().__init__(
             f"{module}() requires the optional dependency {package!r}.\n"
-            f"Install it with:  pip install spyglass-lite[{extra}]"
+            f"Install it with:  python -m pip install spyglass-lite[{extra}]"
         )
 
 

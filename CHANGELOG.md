@@ -15,6 +15,7 @@ All notable changes to `spyglass-lite` are recorded here. The format follows
 - The public verbs (`sg.username/email/ip/asn/phone`, `Spyglass.username/email/...`, the `a*` async forms, and `username_many`) now declare their keyword arguments explicitly and carry docstrings, so `sites=`, `deadline=`, `judge=` and friends autocomplete and type-check. An unknown keyword now fails at the call site instead of inside the engine.
 - `repr(UsernameResult)` is now the compact one-line summary, and `str()` marks a deadline-cut result with `partial`.
 - `docs/AUDIT.md` — security and reliability audit: findings, severity, fixes, residual risk, dependency review and cross-OS matrix.
+- `python -m spyglass_lite` CLI entry point (`username`, `email`, `ip`, `asn`, `phone`) with `--json` and `--version`; `hardened_console` prevents `UnicodeEncodeError` on Windows consoles; JSON always emitted as UTF-8 bytes regardless of console code page.
 
 ### Changed
 
@@ -39,6 +40,8 @@ All notable changes to `spyglass-lite` are recorded here. The format follows
 - `NetworkError`'s docstring described a `raise_on_error=True` option that does not exist.
 - Package metadata pointed Homepage/Source at the upstream repository instead of `spyglass-lite`.
 - Removed dead code: `_whois.domain()`, `_dns.gather_limited()`, `_whois._REPEATABLE`.
+- `ip._geo()` fallback swapped from `http://ip-api.com/json/…` to `https://ipapi.co/{ip}` (F-09).
+- Pyproject now requires Python 3.11+ and declares `dnspython>=2.9.0` unconditionally (F-12).
 
 ### Security
 

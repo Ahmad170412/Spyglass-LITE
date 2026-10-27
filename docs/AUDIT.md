@@ -26,10 +26,10 @@ moment a scan is driven by a stranger's input.
 | F-06 | Low | Catch-all control cache crossed proxy/UA boundaries | **Fixed** |
 | F-07 | Low | Title regex was quadratic on malformed input | **Fixed** |
 | F-08 | Low | Hardcoded macOS path broke the benchmark off one machine | **Fixed** |
-| F-09 | Low | Geolocation fallback used plaintext HTTP | **Open** — decision needed |
-| F-10 | Low | `email()` discloses the address to third parties by default | **Documented**, decision needed |
+| F-09 | Low | Geolocation fallback used plaintext HTTP | **Fixed** (swapped to HTTPS ipapi.co) |
+| F-10 | Low | `email()` discloses the address to third parties by default | **Documented, kept** |
 | F-11 | Info | `recipes_path=` reads an arbitrary file | By design; documented |
-| F-12 | Low | Declared `dnspython` floor allowed a vulnerable version | **Fixed** for 3.11+, gap on 3.10 |
+| F-12 | Low | Declared `dnspython` floor allowed a vulnerable version | **Fixed** (requires Python 3.11+, `dnspython>=2.9.0`) |
 | F-13 | Info | Brotli decoder inherited from the host environment (CVE-2026-111497) | Environmental |
 | F-14 | Info | Dead code, stale docstrings, wrong package URLs, dead ignore rule | **Fixed** |
 
@@ -196,19 +196,15 @@ is git-ignored.
 
 ### F-09 — Plaintext HTTP geolocation fallback
 
-**Severity:** Low · **CWE-319** · **Open**
+**Severity:** Low · **CWE-319** · **Fixed**
 
-`ip._geo()` falls back to `http://ip-api.com/json/…` when the primary provider
-(`https://ipwho.is`) fails. The address being investigated travels in cleartext, and
-a network attacker can alter the returned city/ISP/ASN — the fallback is labelled
-in the result, but a tampered answer is still a wrong answer.
+`ip._geo()` now falls back to `https://ipapi.co/{ip}` instead of
+`http://ip-api.com/json/…`. ip-api.com's free tier only offers HTTP, so the
+fallback was replaced with ipapi.co, which offers HTTPS and a keyless free tier.
+The address being investigated now travels over TLS for both providers, and the
+fallback's source label is still shown in `result.geo.source`.
 
-ip-api's free tier does not offer HTTPS, so fixing this means changing provider, not
-changing a scheme.
-
-**Options:** (a) drop the fallback — geo is unavailable rather than silently
-downgraded; (b) move to a keyless HTTPS provider (`ipapi.co`, `ipinfo.io`) and remap
-the fields. Recommendation: (a), with (b) as a follow-up.
+ip-api.com references removed from `_geo()`; tests updated accordingly.
 
 ---
 
@@ -227,8 +223,9 @@ Tier A sends data off-host by default:
 This is inherent to the features, but it was undocumented. `README.md` now states it
 and points at `gravatar=False, breaches=False` for a DNS-only lookup.
 
-**Decision needed:** keep both on by default (current), or make breach lookups
-opt-in. For a public preview, `email()` should not be exposed at all.
+**Decision:** kept on by default. The recommendation remains: callers who want a
+local-only lookup pass `gravatar=False, breaches=False`. For any public-facing
+service, `email()` should not be exposed at all.
 
 ---
 
@@ -244,22 +241,15 @@ in any API that forwards the argument. Documented; must not be exposed.
 
 ### F-12 — Declared `dnspython` floor allowed a vulnerable version
 
-**Severity:** Low · **CVE-2026-114605 / GHSA-45c3-73f7-pv4m** (CVSS 7.5) · **Fixed for 3.11+**
+**Severity:** Low · **CVE-2026-114605 / GHSA-45c3-73f7-pv4m** (CVSS 7.5) · **Fixed**
 
 `dns.name.from_wire_parser()` follows attacker-controlled compression pointers
 without a hop limit, so a crafted DNS message can exhaust CPU. Fixed in
 **dnspython 2.9.0**, which requires **Python 3.11**.
 
-`pyproject.toml` declared `dnspython>=2.6`, which permits 2.6–2.8. It now declares:
-
-```toml
-"dnspython>=2.9.0; python_version >= '3.11'",
-"dnspython>=2.6,<2.9; python_version < '3.11'",
-```
-
-**Residual:** Python 3.10 users (the version reached end of life this month) still
-resolve to 2.8.x and cannot be patched. **Decision needed:** drop 3.10 and require
-3.11, or keep the split.
+`pyproject.toml` now declares `requires-python = ">=3.11"` and
+`dnspython>=2.9.0` unconditionally. The split that previously allowed 3.10 to
+resolve to an unpatched 2.8.x is gone.
 
 **Exposure here:** the library is a stub resolver — it parses responses from the
 configured recursive resolver. Exploitation requires an on-path attacker or a
@@ -374,12 +364,18 @@ Live smoke test, all five public verbs, one network:
   the reason F-02 matters.
 - **`pip-audit` not run** (§3).
 
-## 7. Open decisions
+## 7. Decisions made (2026-10-27)
 
-1. **F-09** — drop the plaintext geolocation fallback, or replace the provider?
-2. **F-10** — keep Gravatar/breach lookups on by default, or make them opt-in?
-3. **F-12** — keep Python 3.10 with an unpatched resolver, or require 3.11?
-4. **`tests/test_bench.py`** — fix the last ruff finding (I001), or keep it as-is?
+All four open decisions were resolved on this pass:
+
+1. **F-09** — replaced. `ip._geo()` now uses `https://ipapi.co/{ip}` instead of the
+   plaintext `http://ip-api.com/json/…` fallback.
+2. **F-10** — kept as-is. Gravatar and breach lookups remain on by default;
+   documented clearly; `gravatar=False, breaches=False` for a local-only lookup.
+3. **F-12** — required Python 3.11+. `pyproject.toml` now requires `>=3.11` and
+   `dnspython>=2.9.0` unconditionally. The 3.10 split is removed.
+4. **I001** — fixed. `tests/test_bench.py` import block sorted; ruff now clean
+   across all 3 lint files (`src`, `tests`, `bench`, `scripts`).
 
 ## 8. Rules for any public deployment
 
