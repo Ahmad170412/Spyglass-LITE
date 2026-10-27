@@ -195,7 +195,7 @@ python -m build
 ```text
 .
 ├── bench/                # Benchmarking harness vs Sherlock/Maigret
-├── docs/                 # Documentation (RECIPES.md)
+├── docs/                 # Documentation (RECIPES.md, AUDIT.md)
 ├── scripts/              # Dataset generation + maintainer comparison tools
 ├── src/spyglass_lite/    # Core package source
 └── tests/                # 219 mocked offline tests

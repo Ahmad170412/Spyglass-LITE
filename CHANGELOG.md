@@ -14,6 +14,7 @@ All notable changes to `spyglass-lite` are recorded here. The format follows
 - `judge=` knob on `username()` — `judge=False` selects the raw dataset rule and implies `verify_catchall=False`; `strict=` remains accepted as the old name.
 - The public verbs (`sg.username/email/ip/asn/phone`, `Spyglass.username/email/...`, the `a*` async forms, and `username_many`) now declare their keyword arguments explicitly and carry docstrings, so `sites=`, `deadline=`, `judge=` and friends autocomplete and type-check. An unknown keyword now fails at the call site instead of inside the engine.
 - `repr(UsernameResult)` is now the compact one-line summary, and `str()` marks a deadline-cut result with `partial`.
+- `docs/AUDIT.md` — security and reliability audit: findings, severity, fixes, residual risk, dependency review and cross-OS matrix.
 
 ### Changed
 
@@ -28,6 +29,7 @@ All notable changes to `spyglass-lite` are recorded here. The format follows
 
 - `asn()` now resolves the origin AS and holder for a **prefix** query (`1.1.1.0/24`). RIPEStat answers prefix queries with `resource`/`asns` rather than the covering `prefixes` list an address query returns; only the address shape was handled, so a prefix silently produced no origin at all.
 - Response bodies are streamed and cut off at 200 KB *while reading*. Previously the whole response was decoded first and truncated afterwards, so one hostile host could allocate unbounded memory inside a scan running fifty requests at once.
+- The declared `dnspython` floor allowed versions below 2.9.0, which are affected by CVE-2026-114605. Python 3.11+ now requires `>=2.9.0`; Python 3.10 (end of life October 2026) keeps `>=2.6,<2.9` because 2.9.0 requires 3.11. See `docs/AUDIT.md` F-12.
 - WHOIS reads are capped at 256 KB with an overall deadline, and CR/LF is stripped from the query: a hostile registry can no longer stream until the process runs out of memory, hold a connection open with a byte every few seconds, or inject a second protocol command.
 - Title extraction no longer uses a backtracking-capable pattern. The old expression was quadratic on a body containing many unterminated `<title` tags.
 - `_dns.reverse()` is bounded by its `timeout=`; `socket.gethostbyaddr` previously inherited the OS resolver's patience, which is much longer on Windows than on Unix.
