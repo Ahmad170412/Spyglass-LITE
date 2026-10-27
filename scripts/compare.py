@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """spyglass-lite vs Sherlock vs user-scanner on two handles.
 
-    .venv/bin/python compare.py           # run all three engines live
-    .venv/bin/python compare.py --reuse   # re-run lite only, reusing the
-                                          # sherlock/user-scanner results
-                                          # saved in compare_results.txt
+    .venv/bin/python scripts/compare.py           # run all three engines live
+    .venv/bin/python scripts/compare.py --reuse   # re-run lite only, reusing
+                                                 # the sherlock/user-scanner
+                                                 # results saved in
+                                                 # compare_results.txt
 
 Every engine x handle job runs in its own worker thread, so all scans happen
 at once and wall time is whatever the single slowest engine takes. lite
@@ -24,15 +25,17 @@ import tempfile
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from urllib.parse import urlparse
 
 import spyglass_lite as sg
 
 HANDLES = ["teamleader", "teamleaderistrue"]
-REPORT_PATH = "compare_results.txt"
+ROOT = Path(__file__).resolve().parents[1]
+REPORT_PATH = ROOT / "compare_results.txt"
 REUSED_TOOLS = ("sherlock", "user-scanner")
-SHERLOCK_TIMEOUT = 600       # seconds per handle
-USER_SCANNER_TIMEOUT = 900   # seconds per handle
+SHERLOCK_TIMEOUT = 600  # seconds per handle
+USER_SCANNER_TIMEOUT = 900  # seconds per handle
 
 SHERLOCK_LINE = re.compile(r"^\[\+\]\s+(?P<name>.+?):\s+(?P<url>https?://\S+)", re.M)
 USER_SCANNER_HIT = re.compile(r"\[[✔✓]\]\s+(?P<name>.+?)\s+\[(?P<url>https?://[^\]]+)\]")
@@ -109,7 +112,8 @@ def run_user_scanner(handle: str) -> dict:
 
         found: dict[str, str] = {}
         try:
-            entries = json.loads(open(out, encoding="utf-8").read())
+            with open(out, encoding="utf-8") as report_file:
+                entries = json.loads(report_file.read())
         except (OSError, ValueError):
             entries = None
 
@@ -143,14 +147,15 @@ _HANDLE_HEADER = re.compile(r"^  (?P<handle>[A-Za-z0-9_-]+)$")
 _DOMAIN_LINE = re.compile(r"^ {6}(?P<domain>\S+)\s+(?P<url>https?://\S+)\s*$")
 
 
-def parse_previous(path: str) -> dict[str, dict[str, dict]]:
+def parse_previous(path: str | Path) -> dict[str, dict[str, dict]]:
     """Recover {handle: {tool: {found, seconds}}} from an old report file."""
     previous: dict[str, dict[str, dict]] = {}
     handle: str | None = None
     tool: str | None = None
 
     try:
-        lines = open(path, encoding="utf-8").read().splitlines()
+        with open(path, encoding="utf-8") as report_file:
+            lines = report_file.read().splitlines()
     except OSError:
         return previous
 
@@ -193,10 +198,14 @@ def report(handle: str, results: dict[str, dict]) -> None:
     for name, data in results.items():
         found = data["found"]
         note = data.get("error") or ""
-        say(f"\n  {name}: {len(found)} found  ({data['seconds']:.1f}s)"
-            + (f"  [{note}]" if note else ""))
+        say(
+            f"\n  {name}: {len(found)} found  ({data['seconds']:.1f}s)"
+            + (f"  [{note}]" if note else "")
+        )
         if "unknown" in data:
-            say(f"      unknown={data['unknown']} checked={data['checked']} errors={data['errors']}")
+            say(
+                f"      unknown={data['unknown']} checked={data['checked']} errors={data['errors']}"
+            )
         for domain in sorted(found):
             say(f"      {domain:<28} {found[domain]}")
 
@@ -228,8 +237,10 @@ def main() -> int:
                 data = previous.get(handle, {}).get(tool)
                 if data is not None:
                     results[handle][tool] = data
-                    print(f"[{handle}] reusing saved {tool}: {len(data['found'])} found "
-                          f"({data['seconds']:.1f}s)")
+                    print(
+                        f"[{handle}] reusing saved {tool}: {len(data['found'])} found "
+                        f"({data['seconds']:.1f}s)"
+                    )
                 else:
                     print(f"[{handle}] no saved {tool} result — running live")
 
@@ -251,8 +262,7 @@ def main() -> int:
             if data.get("error"):
                 say(f"[{handle}] {name}: ERROR {data['error']}")
             else:
-                say(f"[{handle}] {name}: {len(data['found'])} found "
-                    f"({data['seconds']:.1f}s)")
+                say(f"[{handle}] {name}: {len(data['found'])} found ({data['seconds']:.1f}s)")
 
     for handle, per_tool in results.items():
         report(handle, per_tool)

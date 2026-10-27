@@ -10,34 +10,50 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import re
+import time
 from urllib.parse import urlsplit
+
+# A WHOIS server that never stops sending is a memory-exhaustion bug, not a
+# protocol quirk. Two minutes and a quarter megabyte are far above any real
+# registry response.
+MAX_RESPONSE = 262_144
 
 
 async def _query(server: str, payload: str, timeout: float = 12.0) -> str:
     if not server:
         return ""
+    # A newline in the query is a second protocol command, not part of a name.
+    payload = payload.replace("\r", " ").replace("\n", " ").strip()
+    if not payload:
+        return ""
+    deadline = time.monotonic() + timeout * 2
     try:
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(server, 43), timeout=timeout
         )
     except (OSError, asyncio.TimeoutError):
         return ""
+    chunks: list[bytes] = []
+    total = 0
     try:
         writer.write(payload.encode("utf-8", "replace") + b"\r\n")
         await writer.drain()
-        chunks: list[bytes] = []
-        while True:
-            chunk = await asyncio.wait_for(reader.read(4096), timeout=timeout)
+        while total < MAX_RESPONSE:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            chunk = await asyncio.wait_for(reader.read(4096), timeout=min(remaining, timeout))
             if not chunk:
                 break
             chunks.append(chunk)
-        return b"".join(chunks).decode("utf-8", "replace")
+            total += len(chunk)
     except (OSError, asyncio.TimeoutError):
-        return ""
+        pass
     finally:
         writer.close()
         with contextlib.suppress(OSError, asyncio.TimeoutError):
             await writer.wait_closed()
+    return b"".join(chunks)[:MAX_RESPONSE].decode("utf-8", "replace")
 
 
 def _server(value: str) -> str:
@@ -69,8 +85,6 @@ _FIELD_PATTERNS = {
     "abuse": r"^\s*(?:OrgAbuseEmail|abuse-mailbox)\s*:\s*(.+)$",
 }
 
-_REPEATABLE = {"status", "nameserver"}
-
 
 def parse(text: str) -> dict[str, str]:
     """Extract the fields worth reporting, normalised across registries."""
@@ -94,31 +108,6 @@ def parse(text: str) -> dict[str, str]:
         out["status"] = ", ".join(sorted({s.split()[0] for s in statuses}))
 
     return out
-
-
-async def domain(name: str, timeout: float = 12.0) -> dict[str, str]:
-    """WHOIS for a domain, following the registry referral once."""
-    name = name.strip().strip(".").lower()
-    if not name:
-        return {}
-
-    tld = name.rsplit(".", 1)[-1]
-    root = await _query("whois.iana.org", tld, timeout)
-    server = _first_match(root, r"^\s*refer\s*:\s*(\S+)") or ""
-    server = _server(server)
-
-    text = await _query(server, name, timeout) if server else ""
-    if not text:
-        text = await _query("whois.verisign-grs.com", "domain " + name, timeout)
-
-    # Thin registries hand off to the registrar for the detail block.
-    registrar_server = _server(_first_match(text, r"^\s*Registrar WHOIS Server\s*:\s*(\S+)"))
-    if registrar_server and registrar_server not in {"whois.verisign-grs.com", server}:
-        detail = await _query(registrar_server, name, timeout)
-        if detail:
-            text = text + "\n" + detail
-
-    return parse(text)
 
 
 async def address(ip: str, timeout: float = 12.0) -> dict[str, str]:

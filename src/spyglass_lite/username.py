@@ -62,12 +62,17 @@ _CONTROL_TIMEOUT_FLOOR = 10.0
 _controls: dict[str, tuple[float, str, int]] = {}  # key -> (at, state, body size)
 
 
-def _control_key(site: dict[str, Any]) -> str:
-    """Identity of a site's control probe (fixed handle, so stable per rule)."""
+def _control_key(site: dict[str, Any], config: Config) -> str:
+    """Identity of a site's control probe (fixed handle, so stable per rule).
+
+    The transport identity is part of the key. A catch-all page seen through
+    a proxy, or with a different user agent, says nothing about the page a
+    direct client would see — and the cache is process-wide.
+    """
     url, _ = urls_for(site, _CATCHALL_HANDLE)
     method = str(site.get("method") or "GET").upper()
     payload = json.dumps(site.get("payload"), sort_keys=True, default=str)
-    return f"{method}|{url}|{payload}"
+    return f"{method}|{url}|{payload}|{config.proxy}|{config.user_agent}|{config.verify_tls}"
 
 
 def _distinctive(real: Fetch, control_size: int, handle: str) -> bool:
@@ -162,7 +167,7 @@ async def _control_verdict(
     the rule for the next ten minutes — but any real answer is, because the
     control probe is handle-independent.
     """
-    key = _control_key(site)
+    key = _control_key(site, config)
     now = time.monotonic()
     hit = _controls.get(key)
     if hit is not None and now - hit[0] < _CONTROL_TTL:

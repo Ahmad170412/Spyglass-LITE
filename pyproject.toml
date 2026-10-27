@@ -53,8 +53,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Ahmad170412/Spyglass-OSINT"
-Source = "https://github.com/Ahmad170412/Spyglass-OSINT"
+Homepage = "https://github.com/Ahmad170412/spyglass-lite"
+Source = "https://github.com/Ahmad170412/spyglass-lite"
+Changelog = "https://github.com/Ahmad170412/spyglass-lite/blob/main/CHANGELOG.md"
+Issues = "https://github.com/Ahmad170412/spyglass-lite/issues"
 
 [tool.hatch.version]
 path = "src/spyglass_lite/__init__.py"
@@ -90,7 +92,7 @@ filterwarnings = ["error::DeprecationWarning:spyglass_lite.*"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-src = ["src", "tests"]
+src = ["src", "tests", "bench", "scripts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]

@@ -5,7 +5,6 @@ __pycache__/
 venv/
 dist/
 build/
-!build/cache/.gitkeep
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -23,3 +22,6 @@ bench/results/fields.json
 
 # Live comparison runs against real handles: local evidence, not source.
 compare_results*.txt
+
+# Local checkout of upstream Spyglass for bench/fields and bench/run.
+.upstream/

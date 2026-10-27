@@ -20,6 +20,7 @@ OSINT's ``utils._verify`` (MIT, see NOTICE).
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import re
 import time
 from collections.abc import AsyncIterator, Mapping
@@ -38,6 +39,16 @@ DEFAULT_UA = (
 # Chrome major is old even though the request is otherwise identical.
 
 MAX_BODY = 200_000
+
+# Titles live in <head>, but a page can put megabytes of inline CSS in front
+# of one. Bounded so a hostile (or merely enormous) document cannot turn the
+# title scan into a quadratic one.
+MAX_TITLE_SCAN = 32_768
+
+# A fetch must not be usable as an SSRF primitive. Only literal addresses and
+# a handful of internal names are checked here — resolving every hostname
+# would add a DNS round trip to a scan that already makes 2,000 requests.
+_INTERNAL_HOSTS = frozenset({"localhost", "metadata", "metadata.google.internal"})
 
 # Statuses that mean "ask again later", not "this page does not exist".
 TRANSIENT_CODES = frozenset({0, 408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 524})
@@ -117,7 +128,9 @@ _INTERSTITIAL_TITLES = (
 # were ~1.4KB (an empty SPA frame) and ~6KB (a JS bundle with no profile).
 MIN_BODY_BYTES = 1500
 
-_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+# ``[^<]*`` rather than a lazy ``.*`` with DOTALL: a body containing many
+# unterminated ``<title`` tags makes the lazy form backtrack quadratically.
+_TITLE_RE = re.compile(r"<title[^>]*>([^<]*)</title>", re.IGNORECASE)
 
 # Redirect targets that are never a profile. A rule that lands on one of
 # these has told us "no such page", not "here is the account".
@@ -240,6 +253,36 @@ def _render_payload(payload: Any, username: str) -> Any:
     return payload
 
 
+def _private_host(host: str) -> bool:
+    """Whether a literal host points somewhere a public fetch must not go.
+
+    This is a floor, not a full SSRF defence: a hostname that *resolves* to a
+    private address is not caught here, and neither is a redirect into one.
+    It does stop the two cases that matter in practice — a recipe pointed at
+    ``169.254.169.254`` and one pointed at ``127.0.0.1``.
+    """
+    host = (host or "").strip("[]").lower().rstrip(".")
+    if not host:
+        # No host at all is a malformed URL; let httpx report it as such.
+        return False
+    if host in _INTERNAL_HOSTS:
+        return True
+    if host.endswith(".localhost") or host.endswith(".internal"):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return not address.is_global
+
+
+def _blocked_reason(url: str) -> str:
+    """Why this URL must not be fetched, or ``""`` when it may be."""
+    if _private_host(urlparse(url).hostname or ""):
+        return "blocked host (private, loopback or internal address)"
+    return ""
+
+
 async def fetch(
     http: httpx.AsyncClient,
     method: str,
@@ -250,7 +293,18 @@ async def fetch(
     timeout: float = 10.0,
     follow_redirects: bool = True,
 ) -> Fetch:
-    """One request, with every transport failure turned into data."""
+    """One request, with every transport failure turned into data.
+
+    The body is read as a stream and cut off at :data:`MAX_BODY`. Reading the
+    whole response first and truncating afterwards lets a single hostile host
+    allocate arbitrarily much memory inside a scan that runs fifty of these at
+    once — the one failure mode that takes down the process rather than the
+    request.
+    """
+    blocked = _blocked_reason(url)
+    if blocked:
+        return Fetch(requested_url=url, error=blocked)
+
     method = (method or "GET").upper()
     start = time.perf_counter()
     kwargs: dict[str, Any] = {}
@@ -262,14 +316,34 @@ async def fetch(
             kwargs["data"] = payload if isinstance(payload, dict) else {"value": payload}
 
     try:
-        response = await http.request(
+        async with http.stream(
             method,
             url,
             headers=dict(headers or {}) or None,
             timeout=timeout,
             follow_redirects=follow_redirects,
             **kwargs,
-        )
+        ) as response:
+            chunks: list[bytes] = []
+            size = 0
+            async for chunk in response.aiter_bytes():
+                chunks.append(chunk)
+                size += len(chunk)
+                if size >= MAX_BODY:
+                    break
+            raw = b"".join(chunks)[:MAX_BODY]
+            try:
+                text = raw.decode(response.encoding or "utf-8", "replace")
+            except LookupError:  # a bogus charset in the header
+                text = raw.decode("utf-8", "replace")
+            return Fetch(
+                status=response.status_code,
+                url=str(response.url),
+                requested_url=url,
+                text=text,
+                headers={k.lower(): v for k, v in response.headers.items()},
+                elapsed_ms=int((time.perf_counter() - start) * 1000),
+            )
     except httpx.HTTPError as exc:
         elapsed = int((time.perf_counter() - start) * 1000)
         return Fetch(
@@ -277,15 +351,6 @@ async def fetch(
             error=f"{type(exc).__name__}: {str(exc)[:120]}",
             elapsed_ms=elapsed,
         )
-
-    return Fetch(
-        status=response.status_code,
-        url=str(response.url),
-        requested_url=url,
-        text=response.text[:MAX_BODY],
-        headers={k.lower(): v for k, v in response.headers.items()},
-        elapsed_ms=int((time.perf_counter() - start) * 1000),
-    )
 
 
 async def request_with_retries(
@@ -354,7 +419,7 @@ def _bump(confidence: str) -> str:
 
 
 def _title(body: str) -> str:
-    match = _TITLE_RE.search(body)
+    match = _TITLE_RE.search(body[:MAX_TITLE_SCAN])
     return match.group(1).strip().lower() if match else ""
 
 

@@ -8,7 +8,6 @@ the email module's provider and deliverability checks.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterable
 
 import dns.asyncresolver
 import dns.exception
@@ -82,22 +81,18 @@ async def ns(domain: str, *, timeout: float = 4.0) -> list[str]:
 
 
 async def reverse(ip: str, *, timeout: float = 4.0) -> str:
-    """PTR lookup, best-effort."""
+    """PTR lookup, best-effort.
+
+    ``socket.gethostbyaddr`` has no timeout of its own, and how long the OS
+    resolver waits differs by platform (Windows is far more patient than
+    Linux). A scan must not inherit that, so the call is bounded here.
+    """
     import socket
 
     try:
-        name, _, _ = await asyncio.to_thread(socket.gethostbyaddr, ip)
+        name, _, _ = await asyncio.wait_for(
+            asyncio.to_thread(socket.gethostbyaddr, ip), timeout=timeout
+        )
         return name
-    except (OSError, UnicodeError):
+    except (OSError, UnicodeError, asyncio.TimeoutError):
         return ""
-
-
-async def gather_limited(aws: Iterable, limit: int = 10) -> list:
-    """Run awaitables with a small concurrency cap."""
-    sem = asyncio.Semaphore(limit)
-
-    async def _one(aw):
-        async with sem:
-            return await aw
-
-    return await asyncio.gather(*(_one(aw) for aw in aws), return_exceptions=True)

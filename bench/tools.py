@@ -22,7 +22,12 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-UPSTREAM = Path("/private/var/folders/r2/r2_plryx0sx54gws75q1wynr0000gp/T/opencode/spyglass-src")
+ROOT = Path(__file__).resolve().parent
+
+# A checkout of upstream Spyglass, for the field-parity harness. Never commit
+# an absolute path here: it makes the benchmark unusable on every machine but
+# the one it was written on, and on every OS but that one.
+UPSTREAM = Path(os.environ.get("SPYGLASS_UPSTREAM") or ROOT.parent / ".upstream")
 
 SHERLOCK_LINE = re.compile(r"^\[\+\]\s+(?P<name>.+?):\s+(?P<url>https?://\S+)", re.M)
 URL = re.compile(r"https?://[^\s<>\"']+")

@@ -10,6 +10,11 @@ Two questions, two harnesses.
 Results land in `bench/results/`. Raw runs and oracle probes are cached in
 `bench/.cache/`, which is git-ignored; `--refresh` re-measures everything.
 
+`bench.fields` and the `spyglass` rows of `bench.run` need a local checkout of
+upstream Spyglass. Point at it with `SPYGLASS_UPSTREAM=/path/to/Spyglass-OSINT`,
+or place it at `.upstream/` beside `pyproject.toml` (git-ignored). There is no
+hardcoded path: the harness is expected to run on any machine and any OS.
+
 ## Why an oracle, not a diff
 
 Comparing lite's output to Sherlock's output tells you where they disagree,

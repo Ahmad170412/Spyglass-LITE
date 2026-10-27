@@ -30,8 +30,10 @@ class MissingDependency(SpyglassError, ImportError):
 
 
 class NetworkError(SpyglassError):
-    """A transport failure that the caller asked to be raised.
+    """A transport failure, for callers that choose to raise on one.
 
-    Only used when ``raise_on_error=True``; the default is to record the
-    failure in ``result.errors`` and continue.
+    Transport failures are data in this package: they are recorded in
+    ``result.errors`` and the scan continues. This type exists so an
+    application layering its own strict mode over the library has something
+    specific to catch; nothing in ``spyglass_lite`` raises it today.
     """

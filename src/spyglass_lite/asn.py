@@ -17,6 +17,7 @@ import re
 import time
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlencode
 
 import httpx
 
@@ -44,7 +45,7 @@ def _json(result: Fetch) -> Any:
 async def _data(
     http: httpx.AsyncClient, path: str, params: Mapping[str, str], config: Config
 ) -> Any:
-    query = "&".join(f"{key}={value}" for key, value in params.items())
+    query = urlencode(params)
     result = await fetch(
         http, "GET", f"{_RIPESTAT}/{path}/data.json?{query}", timeout=config.timeout
     )
@@ -57,18 +58,29 @@ async def _data(
 async def _prefix_overview(
     http: httpx.AsyncClient, resource: str, config: Config
 ) -> tuple[str, str, str]:
-    """Return ``(prefix, asn, holder)`` for an address or prefix."""
+    """Return ``(prefix, asn, holder)`` for an address or a prefix.
+
+    RIPEStat answers the two questions with different shapes: an address gets
+    a ``prefixes`` list of covering prefixes, while a prefix gets its own
+    ``resource`` and ``asns`` at the top level. Reading only the first shape
+    made a prefix query silently report no origin AS at all.
+    """
     data = await _data(http, "prefix-overview", {"resource": resource}, config)
     if not isinstance(data, Mapping):
         return "", "", ""
-    prefixes = data.get("prefixes") or []
-    if not isinstance(prefixes, list) or not prefixes:
-        return "", "", ""
-    first = prefixes[0]
-    if not isinstance(first, Mapping):
-        return "", "", ""
-    prefix = str(first.get("prefix") or "")
-    asns = first.get("asns") or []
+
+    first: Mapping[str, Any] | None = None
+    prefixes = data.get("prefixes")
+    if isinstance(prefixes, list) and prefixes and isinstance(prefixes[0], Mapping):
+        first = prefixes[0]
+
+    if first is not None:
+        prefix = str(first.get("prefix") or "")
+        asns = first.get("asns")
+    else:
+        prefix = str(data.get("resource") or "")
+        asns = data.get("asns")
+
     if isinstance(asns, list) and asns and isinstance(asns[0], Mapping):
         number = asns[0].get("asn")
         holder = str(asns[0].get("holder") or "")
@@ -78,12 +90,12 @@ async def _prefix_overview(
 
 async def _as_overview(
     http: httpx.AsyncClient, asn: str, config: Config
-) -> tuple[str, bool | None, str]:
+) -> tuple[str, bool | None]:
     data = await _data(http, "as-overview", {"resource": asn}, config)
     if not isinstance(data, Mapping):
-        return "", None, ""
+        return "", None
     announced = data.get("announced")
-    return str(data.get("holder") or ""), (announced if isinstance(announced, bool) else None), ""
+    return str(data.get("holder") or ""), (announced if isinstance(announced, bool) else None)
 
 
 async def _rpki(
@@ -118,7 +130,7 @@ async def scan(http: httpx.AsyncClient, target: str, config: Config) -> AsnResul
     if asn_match:
         result.query_type = "asn"
         asn = "AS" + asn_match.group(1)
-        holder, announced, _ = await _as_overview(http, asn, config)
+        holder, announced = await _as_overview(http, asn, config)
         result.origin_asn = asn
         result.holder = holder
         result.announced = announced
@@ -154,7 +166,7 @@ async def scan(http: httpx.AsyncClient, target: str, config: Config) -> AsnResul
     result.holder = holder
 
     if origin:
-        as_holder, announced, _ = await _as_overview(http, origin, config)
+        as_holder, announced = await _as_overview(http, origin, config)
         result.announced = announced
         if as_holder:
             result.holder = as_holder

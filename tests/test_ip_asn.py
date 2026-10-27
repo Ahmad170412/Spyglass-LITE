@@ -237,6 +237,41 @@ async def test_asn_for_prefix(respx_mock):
     assert result.prefix == "1.1.1.0/24"
 
 
+async def test_asn_for_prefix_uses_the_prefix_response_shape(respx_mock):
+    """RIPEStat answers a prefix query with ``resource``/``asns``, not ``prefixes``.
+
+    Reading only the address shape made a prefix query report no origin AS at
+    all, which the shared fixture never caught because it mocked an address
+    response for every resource.
+    """
+    respx_mock.get(url__startswith="https://stat.ripe.net/data/prefix-overview/").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": {
+                    "resource": "1.1.1.0/24",
+                    "announced": True,
+                    "asns": [{"asn": 13335, "holder": "CLOUDFLARENET"}],
+                }
+            },
+        )
+    )
+    respx_mock.get(url__startswith="https://stat.ripe.net/data/as-overview/").mock(
+        return_value=httpx.Response(
+            200, json={"data": {"holder": "CLOUDFLARENET, US", "announced": True}}
+        )
+    )
+    respx_mock.get(url__startswith="https://stat.ripe.net/data/rpki-validation/").mock(
+        return_value=httpx.Response(200, json={"data": {"prefix": "1.1.1.0/24", "status": "valid"}})
+    )
+
+    result = await Spyglass().aasn("1.1.1.0/24")
+
+    assert result.prefix == "1.1.1.0/24"
+    assert result.origin_asn == "AS13335"
+    assert result.holder == "CLOUDFLARENET, US"
+
+
 async def test_asn_for_as(respx_mock):
     respx_mock.get(url__startswith="https://stat.ripe.net/data/as-overview/").mock(
         return_value=httpx.Response(

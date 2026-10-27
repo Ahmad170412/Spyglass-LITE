@@ -76,9 +76,7 @@ def download(name: str, refresh: bool) -> dict[str, Any]:
     CACHE.mkdir(parents=True, exist_ok=True)
     path = CACHE / f"{name}.json"
     if refresh or not path.exists():
-        request = urllib.request.Request(
-            SOURCES[name]["url"], headers={"User-Agent": USER_AGENT}
-        )
+        request = urllib.request.Request(SOURCES[name]["url"], headers={"User-Agent": USER_AGENT})
         with urllib.request.urlopen(request, timeout=60) as response:
             path.write_bytes(response.read())
         print(f"  downloaded {name}: {path.stat().st_size / 1024:.0f} KiB")
@@ -172,9 +170,7 @@ def from_maigret(name: str, raw: dict[str, Any]) -> dict[str, Any] | None:
         "absent_url": raw.get("errorUrl") or None,
         "regex": raw.get("regexCheck") or None,
         "ignore403": bool(raw.get("ignore403")),
-        "errors": {
-            str(k): str(v) for k, v in (raw.get("errors") or {}).items() if k and v
-        },
+        "errors": {str(k): str(v) for k, v in (raw.get("errors") or {}).items() if k and v},
         "protected": [str(p) for p in raw.get("protection") or [] if p],
         "tags": [str(t) for t in raw.get("tags") or [] if t],
         "sample": raw.get("usernameClaimed") or None,
@@ -187,10 +183,10 @@ def from_maigret(name: str, raw: dict[str, Any]) -> dict[str, Any] | None:
 def valid(record: dict[str, Any]) -> bool:
     if record.get("check") not in {"status_code", "message", "response_url"}:
         return False
-    if record["check"] == "message" and not record["present"] and not record["absent"]:
-        # A "message" rule with no strings can never decide anything.
-        return False
-    return True
+    if record["check"] != "message":
+        return True
+    # A "message" rule with no strings can never decide anything.
+    return bool(record["present"] or record["absent"])
 
 
 def specificity(record: dict[str, Any]) -> int:
@@ -286,9 +282,11 @@ def build(refresh: bool) -> int:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     # mtime=0 keeps the artefact byte-identical across rebuilds.
-    with open(OUT, "wb") as handle:
-        with gzip.GzipFile(fileobj=handle, mode="wb", compresslevel=9, mtime=0) as gz:
-            gz.write(raw)
+    with (
+        open(OUT, "wb") as handle,
+        gzip.GzipFile(fileobj=handle, mode="wb", compresslevel=9, mtime=0) as gz,
+    ):
+        gz.write(raw)
 
     counts = payload["meta"]["counts"]
     print(f"  sites      {counts['sites']}")

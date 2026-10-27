@@ -168,6 +168,11 @@ sg.email("me@example.com", registrations=True, recipes_path="my-recipes.json")
 sg.email("me@example.com", sites=[{"name": "Example", "url": "https://…", "exists_when": {...}}])
 ```
 
+Two things a caller should know before using `email()`:
+
+- **It talks to third parties about the address.** Gravatar receives the MD5 hash (and the plain address during a profile lookup), and the two breach APIs receive the address itself. Use `gravatar=False, breaches=False` to keep the lookup local to DNS.
+- **`sites=` fetches the URLs you give it.** Literal private, loopback and link-local hosts (`127.0.0.1`, `169.254.169.254`, `[::1]`, `*.internal`) are refused, so it is not a naive SSRF primitive — but a hostname that *resolves* privately, or a public URL that redirects to one, is still reachable. Do not pass untrusted recipe URLs to a service you expose.
+
 ---
 
 ## Testing
@@ -177,7 +182,8 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,phone]"
 
 pytest -q                 # offline: every HTTP and DNS call is mocked
-ruff check src tests bench
+ruff check src tests bench scripts
+ruff format --check src tests bench scripts
 mypy
 python -m build
 ```
@@ -190,9 +196,9 @@ python -m build
 .
 ├── bench/                # Benchmarking harness vs Sherlock/Maigret
 ├── docs/                 # Documentation (RECIPES.md)
-├── scripts/              # Dataset generation tools
+├── scripts/              # Dataset generation + maintainer comparison tools
 ├── src/spyglass_lite/    # Core package source
-└── tests/                # 150+ mocked offline tests
+└── tests/                # 219 mocked offline tests
 ```
 
 ---
