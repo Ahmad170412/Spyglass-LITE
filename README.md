@@ -65,8 +65,10 @@ print(result.partial)  # True if a deadline cut the scan short
 reported there with the reason — it is not silently counted as "no account".
 `unknown` is the honest middle state, and it is usually the bigger list. A
 site that is merely slow shows up as a `request failed (…Timeout…)`: the
-default per-request timeout is 6 seconds, so raise it for a slow network
-(`sg.lite(timeout=10)`) rather than reading the absence as a fact.
+default per-request timeout is 10 seconds, and it is better to bound the
+scan with `deadline=` than to shorten every request — a 6s timeout was
+measured to save no wall-clock time on a full scan while losing
+slow-but-real profiles.
 
 ---
 
@@ -106,7 +108,7 @@ import spyglass_lite as sg
 
 # Configure a custom client
 client = sg.lite(
-    timeout=8,          # per request, seconds (default 6)
+    timeout=8,          # per request, seconds (default 10)
     concurrency=100,    # global in-flight cap (default 50)
     per_host=2,         # cap per hostname
     retries=1,          # transient HTTP statuses only

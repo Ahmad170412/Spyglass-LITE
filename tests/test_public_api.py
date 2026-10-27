@@ -119,5 +119,6 @@ def test_partial_is_visible_in_the_summary():
     assert str(result) == "<UsernameResult 'johndoe': 0 found, 0 unknown, partial>"
 
 
-def test_default_timeout_is_six_seconds():
-    assert sg.Config().timeout == 6.0
+def test_default_timeout_stays_ten_seconds():
+    """A 6s default was measured as no faster on a full scan and lost hits."""
+    assert sg.Config().timeout == 10.0
