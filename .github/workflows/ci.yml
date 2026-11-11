@@ -54,6 +54,7 @@ jobs:
         run: python -m build
 
       - name: Check the wheel contains its data
+        shell: bash
         run: |
           python - <<'PY'
           import glob, zipfile
