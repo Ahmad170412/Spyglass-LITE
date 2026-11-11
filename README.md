@@ -60,7 +60,19 @@ print(result)          # <UsernameResult 'johndoe': 2 found, 1 unknown>
 print(result.partial)  # True if a deadline cut the scan short
 ```
 
-**Fewer hits than expected?** Read `result.unknown`. A site that blocks bots
+**Fewer hits than expected?** Read `result.unknown`.
+
+Not sure which module to use? `sg.detect(target)` guesses, and `sg.lookup(target)`
+dispatches automatically:
+
+```python
+sg.lookup("me@example.com")        # -> email()
+sg.lookup("example.com")           # -> domain()
+sg.lookup("+14155552671")          # -> phone()
+sg.lookup("torvalds")              # -> username()
+```
+
+Every result has `.to_dict()` and `.to_json()` for serialisation. A site that blocks bots
 (403), shows a challenge page, or serves the same shell to every handle is
 reported there with the reason — it is not silently counted as "no account".
 `unknown` is the honest middle state, and it is usually the bigger list. A
@@ -86,7 +98,8 @@ slow-but-real profiles.
 | `email()` | Validation, MX/provider, SPF/DMARC, Gravatar, breach hits | HTTP + DNS |
 | `ip()` | Geolocation, reverse DNS, WHOIS, passive ports | HTTP + WHOIS/43 |
 | `asn()` | Covering prefix, origin AS, RPKI state | RIPEStat |
-| `phone()` | Carrier, region, line type, formats | `[phone]` extra |
+| `domain()` | DNS records, subdomains (CT), WHOIS | HTTP + DNS |
+| `phone()` / `phone_info()` | Carrier, region, line type, formats (offline) | `[phone]` extra |
 
 ---
 
@@ -113,6 +126,9 @@ client = sg.lite(
     per_host=2,         # cap per hostname
     retries=1,          # transient HTTP statuses only
     proxy="socks5://127.0.0.1:9050",   # needs spyglass-lite[socks]
+    cache=True,                         # opt-in disk cache for DNS/WHOIS/geo
+    cache_dir="~/.cache/spyglass-lite",
+    enrich=True,                        # opt-in HIBP/VirusTotal when keys present
 )
 
 # Use your custom client

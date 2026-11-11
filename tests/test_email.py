@@ -22,12 +22,12 @@ from spyglass_lite.email import (
 def fake_dns(monkeypatch):
     """Deterministic MX/SPF/DMARC without touching DNS."""
 
-    async def mx(domain, *, timeout=4.0):
+    async def mx(domain, *, timeout=4.0, cache=None):
         if domain == "nomx.example":
             return []
         return [(10, "aspmx.l.google.com"), (20, "alt1.aspmx.l.google.com")]
 
-    async def txt(name, *, timeout=4.0):
+    async def txt(name, *, timeout=4.0, cache=None):
         if name.startswith("_dmarc."):
             return ["v=DMARC1; p=quarantine"]
         return ["v=spf1 include:_spf.google.com ~all", "google-site-verification=abc"]
@@ -117,7 +117,7 @@ async def test_disposable_domain(fake_dns):
 
 
 async def test_missing_spf_and_dmarc(fake_dns, monkeypatch):
-    async def empty_txt(name, *, timeout=4.0):
+    async def empty_txt(name, *, timeout=4.0, cache=None):
         return []
 
     monkeypatch.setattr("spyglass_lite._dns.txt", empty_txt)

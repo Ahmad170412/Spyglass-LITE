@@ -10,13 +10,13 @@ from spyglass_lite import InvalidTarget, Spyglass
 
 @pytest.fixture
 def ip_network(monkeypatch):
-    async def reverse(ip, *, timeout=4.0):
+    async def reverse(ip, *, timeout=4.0, cache=None):
         return "one.one.one.one"
 
-    async def whois(ip, *, timeout=12.0):
+    async def whois(ip, *, timeout=12.0, cache=None):
         return {"netname": "APNIC-LABS", "country": "AU"}
 
-    async def a(host, *, timeout=4.0):
+    async def a(host, *, timeout=4.0, cache=None):
         return ["1.1.1.1"]
 
     monkeypatch.setattr("spyglass_lite._dns.reverse", reverse)
@@ -96,7 +96,7 @@ async def test_ipv6_lookup(ip_network, respx_mock):
 
 
 async def test_unresolvable_host_raises(monkeypatch):
-    async def none(host, *, timeout=4.0):
+    async def none(host, *, timeout=4.0, cache=None):
         return []
 
     monkeypatch.setattr("spyglass_lite._dns.a", none)

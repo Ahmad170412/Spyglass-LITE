@@ -33,6 +33,12 @@ class Model:
         assert isinstance(data, dict)
         return data
 
+    def to_json(self, *, indent: int = 2) -> str:
+        """Serialise the result to a JSON string."""
+        import json
+
+        return json.dumps(self.to_dict(), ensure_ascii=False, indent=indent, default=str)
+
     def __getitem__(self, key: str) -> Any:
         try:
             return getattr(self, key)
@@ -258,7 +264,49 @@ class AsnResult(Model):
         return sorted(states, key=lambda s: order.get(s, 1))[0]
 
 
-# ─── phone ─────────────────────────────────────────────────
+# ─── domain ───────────────────────────────────────────────
+
+
+@dataclass(slots=True)
+class DnsRecord(Model):
+    """One DNS answer for a domain."""
+
+    type: str
+    name: str
+    value: str
+    ttl: int | None = None
+
+
+@dataclass(slots=True)
+class Subdomain(Model):
+    """A hostname discovered under a domain."""
+
+    host: str
+    ips: list[str] = field(default_factory=list)
+    source: str = ""
+
+
+@dataclass(slots=True)
+class DomainResult(Model):
+    target: str
+    domain: str = ""
+    dns: list[DnsRecord] = field(default_factory=list)
+    subdomains: list[Subdomain] = field(default_factory=list)
+    whois: dict[str, str] = field(default_factory=dict)
+    duration_ms: int = 0
+    errors: list[str] = field(default_factory=list)
+
+    def __bool__(self) -> bool:
+        return bool(self.domain)
+
+    def __str__(self) -> str:
+        return (
+            f"<DomainResult {self.domain!r}: {len(self.dns)} records, "
+            f"{len(self.subdomains)} subdomains>"
+        )
+
+
+# ─── phone ────────────────────────────────────────────────
 
 
 @dataclass(slots=True)

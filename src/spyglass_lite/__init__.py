@@ -26,6 +26,8 @@ from .models import (
     Account,
     AsnResult,
     Breach,
+    DnsRecord,
+    DomainResult,
     EmailResult,
     Geo,
     Gravatar,
@@ -35,11 +37,12 @@ from .models import (
     Profile,
     Registration,
     RpkiValidation,
+    Subdomain,
     Unknown,
     UsernameResult,
 )
 
-__version__ = "0.9.0b0"
+__version__ = "1.1.0"
 
 __all__ = [
     # client
@@ -50,11 +53,15 @@ __all__ = [
     "configure",
     "default",
     # functions
+    "detect",
+    "lookup",
     "username",
     "email",
     "ip",
     "asn",
+    "domain",
     "phone",
+    "phone_info",
     # models
     "UsernameResult",
     "Profile",
@@ -68,6 +75,9 @@ __all__ = [
     "IpResult",
     "Geo",
     "AsnResult",
+    "DomainResult",
+    "DnsRecord",
+    "Subdomain",
     "RpkiValidation",
     "PhoneResult",
     # errors
@@ -179,6 +189,177 @@ def ip(
 def asn(target: str) -> AsnResult:
     """Resolve the prefix, origin AS and RPKI state for an IP, prefix or AS."""
     return default().asn(target)
+
+
+def domain(
+    target: str,
+    *,
+    ct: bool = True,
+    whois: bool = True,
+    resolve: bool = True,
+    wordlist: bool = False,
+    dns_timeout: float = 4.0,
+) -> DomainResult:
+    """Resolve DNS, discover subdomains and run WHOIS for a domain."""
+    return default().domain(
+        target,
+        ct=ct,
+        whois=whois,
+        resolve=resolve,
+        wordlist=wordlist,
+        dns_timeout=dns_timeout,
+    )
+
+
+def phone_info(target: str) -> PhoneResult:
+    """Offline provider/region info for a number (no network search)."""
+    return default().phone_info(target)
+
+
+# Common TLDs used to guess whether a bare token is a domain name.
+_KNOWN_TLDS = frozenset(
+    {
+        "com",
+        "net",
+        "org",
+        "io",
+        "co",
+        "dev",
+        "app",
+        "info",
+        "me",
+        "uk",
+        "de",
+        "fr",
+        "nl",
+        "eu",
+        "ru",
+        "cn",
+        "jp",
+        "br",
+        "au",
+        "ca",
+        "us",
+        "in",
+        "it",
+        "es",
+        "pl",
+        "se",
+        "no",
+        "fi",
+        "dk",
+        "ch",
+        "at",
+        "be",
+        "pt",
+        "cz",
+        "nz",
+        "za",
+        "kr",
+        "tw",
+        "hk",
+        "sg",
+        "my",
+        "th",
+        "id",
+        "ph",
+        "vn",
+        "mx",
+        "ar",
+        "cl",
+        "pe",
+        "edu",
+        "gov",
+        "mil",
+        "biz",
+        "name",
+        "pro",
+        "xyz",
+        "tech",
+        "online",
+        "site",
+        "top",
+        "club",
+        "live",
+        "cloud",
+        "ai",
+        "sh",
+        "gg",
+        "tv",
+    }
+)
+
+
+def detect(target: str) -> str:
+    """Guess the kind of a target: email, phone, ip, asn, domain or username.
+
+    Returns one of ``"email"``, ``"phone"``, ``"ip"``, ``"asn"``, ``"domain"``
+    or ``"username"``. Ambiguous single-token inputs default to ``"username"``.
+    """
+    value = str(target).strip()
+    if not value:
+        return "username"
+    if "@" in value:
+        return "email"
+    if value.startswith("+"):
+        return "phone"
+    # IP address
+    try:
+        import ipaddress
+
+        ipaddress.ip_address(value.strip("[]"))
+        return "ip"
+    except ValueError:
+        pass
+    # ASN or prefix
+    if value.upper().startswith("AS") and value[2:].isdigit():
+        return "asn"
+    if "/" in value:
+        try:
+            import ipaddress
+
+            ipaddress.ip_network(value, strict=False)
+            return "asn"
+        except ValueError:
+            pass
+    # Domain: final label must be a known TLD
+    host = value.lower()
+    if "://" in host:
+        from urllib.parse import urlparse
+
+        host = urlparse(host).hostname or host
+    host = host.strip("[]").rstrip(".")
+    if "." in host and " " not in host and "/" not in host:
+        tld = host.rsplit(".", 1)[-1]
+        if tld in _KNOWN_TLDS:
+            return "domain"
+    return "username"
+
+
+def lookup(target: str, *, kind: str = "auto", **options: Any) -> Any:
+    """One call that picks the right module for a target.
+
+    ``kind="auto"`` (the default) uses :func:`detect` to choose. Pass an
+    explicit ``kind`` (``"username"``, ``"email"``, ``"ip"``, ``"asn"``,
+    ``"domain"``, ``"phone"``) to override, and any module-specific options
+    via keyword arguments::
+
+        sg.lookup("torvalds")
+        sg.lookup("me@example.com", breaches=False)
+        sg.lookup("example.com", kind="domain", wordlist=True)
+    """
+    chosen = detect(target) if kind == "auto" else kind
+    if chosen == "email":
+        return email(target, **options)
+    if chosen == "phone":
+        return phone(target)
+    if chosen == "ip":
+        return ip(target, **options)
+    if chosen == "asn":
+        return asn(target)
+    if chosen == "domain":
+        return domain(target, **options)
+    return username(target, **options)
 
 
 def phone(target: str) -> PhoneResult:

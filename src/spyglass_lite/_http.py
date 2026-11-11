@@ -20,8 +20,10 @@ OSINT's ``utils._verify`` (MIT, see NOTICE).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import ipaddress
 import re
+import socket
 import time
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
@@ -283,6 +285,31 @@ def _blocked_reason(url: str) -> str:
     return ""
 
 
+async def _resolve_blocked(url: str) -> str:
+    """Resolve the host and reject any non-public resolved address.
+
+    Closes the DNS-rebinding gap left by :func:`_blocked_reason`, which only
+    inspects the literal host. A hostname that resolves to a loopback or
+    private address is refused before the connection is opened. A resolution
+    failure returns ``""`` so httpx can report it normally.
+    """
+    host = (urlparse(url).hostname or "").strip("[]")
+    if not host or _private_host(host):
+        return "blocked host (private, loopback or internal address)" if host else ""
+    try:
+        infos = await asyncio.to_thread(socket.getaddrinfo, host, None)
+    except (socket.gaierror, OSError):
+        return ""
+    for info in infos:
+        try:
+            address = ipaddress.ip_address(info[4][0])
+        except (ValueError, IndexError):
+            continue
+        if not address.is_global:
+            return f"blocked host (resolved to non-public address {address})"
+    return ""
+
+
 async def fetch(
     http: httpx.AsyncClient,
     method: str,
@@ -300,57 +327,104 @@ async def fetch(
     allocate arbitrarily much memory inside a scan that runs fifty of these at
     once — the one failure mode that takes down the process rather than the
     request.
-    """
-    blocked = _blocked_reason(url)
-    if blocked:
-        return Fetch(requested_url=url, error=blocked)
 
+    Redirects are followed manually when ``follow_redirects`` is set so that
+    every hop — including a redirect into a private address — is validated
+    against :func:`_blocked_reason` and :func:`_resolve_blocked`. A single
+    hostile redirect can no longer bypass the SSRF floor.
+    """
     method = (method or "GET").upper()
     start = time.perf_counter()
-    kwargs: dict[str, Any] = {}
-    if payload and method in {"POST", "PUT", "PATCH"}:
-        content_type = str((headers or {}).get("content-type", "")).lower()
-        if "json" in content_type:
-            kwargs["json"] = payload
-        else:
-            kwargs["data"] = payload if isinstance(payload, dict) else {"value": payload}
 
-    try:
-        async with http.stream(
-            method,
-            url,
-            headers=dict(headers or {}) or None,
-            timeout=timeout,
-            follow_redirects=follow_redirects,
-            **kwargs,
-        ) as response:
-            chunks: list[bytes] = []
-            size = 0
-            async for chunk in response.aiter_bytes():
-                chunks.append(chunk)
-                size += len(chunk)
-                if size >= MAX_BODY:
-                    break
-            raw = b"".join(chunks)[:MAX_BODY]
-            try:
-                text = raw.decode(response.encoding or "utf-8", "replace")
-            except LookupError:  # a bogus charset in the header
-                text = raw.decode("utf-8", "replace")
-            return Fetch(
-                status=response.status_code,
-                url=str(response.url),
-                requested_url=url,
-                text=text,
-                headers={k.lower(): v for k, v in response.headers.items()},
-                elapsed_ms=int((time.perf_counter() - start) * 1000),
-            )
-    except httpx.HTTPError as exc:
-        elapsed = int((time.perf_counter() - start) * 1000)
+    blocked = _blocked_reason(url) or await _resolve_blocked(url)
+    if blocked:
         return Fetch(
-            requested_url=url,
-            error=f"{type(exc).__name__}: {str(exc)[:120]}",
-            elapsed_ms=elapsed,
+            requested_url=url, error=blocked, elapsed_ms=int((time.perf_counter() - start) * 1000)
         )
+
+    current_url = url
+    current_method = method
+    max_hops = 10
+
+    for _ in range(max_hops):
+        kwargs: dict[str, Any] = {}
+        if payload and current_method in {"POST", "PUT", "PATCH"}:
+            content_type = str((headers or {}).get("content-type", "")).lower()
+            if "json" in content_type:
+                kwargs["json"] = payload
+            else:
+                kwargs["data"] = payload if isinstance(payload, dict) else {"value": payload}
+
+        try:
+            async with http.stream(
+                current_method,
+                current_url,
+                headers=dict(headers or {}) or None,
+                timeout=timeout,
+                follow_redirects=False,
+                **kwargs,
+            ) as response:
+                if follow_redirects and response.status_code in {301, 302, 303, 307, 308}:
+                    location = response.headers.get("location")
+                    if not location:
+                        # no target to follow; fall through and return this
+                        pass
+                    else:
+                        try:
+                            next_url = str(response.url.join(location))
+                        except Exception:  # noqa: BLE001
+                            from urllib.parse import urljoin
+
+                            next_url = urljoin(current_url, location)
+                        blocked = _blocked_reason(next_url) or await _resolve_blocked(next_url)
+                        if blocked:
+                            return Fetch(
+                                requested_url=url,
+                                error=blocked,
+                                elapsed_ms=int((time.perf_counter() - start) * 1000),
+                            )
+                        if response.status_code == 303:
+                            current_method = "GET"
+                            payload = None
+                        current_url = next_url
+                        # drain body
+                        with contextlib.suppress(Exception):
+                            await response.aread()
+                        continue
+
+                chunks: list[bytes] = []
+                size = 0
+                async for chunk in response.aiter_bytes():
+                    chunks.append(chunk)
+                    size += len(chunk)
+                    if size >= MAX_BODY:
+                        break
+                raw = b"".join(chunks)[:MAX_BODY]
+                try:
+                    text = raw.decode(response.encoding or "utf-8", "replace")
+                except LookupError:  # a bogus charset in the header
+                    text = raw.decode("utf-8", "replace")
+                return Fetch(
+                    status=response.status_code,
+                    url=str(response.url) if str(response.url) else current_url,
+                    requested_url=url,
+                    text=text,
+                    headers={k.lower(): v for k, v in response.headers.items()},
+                    elapsed_ms=int((time.perf_counter() - start) * 1000),
+                )
+        except httpx.HTTPError as exc:
+            elapsed = int((time.perf_counter() - start) * 1000)
+            return Fetch(
+                requested_url=url,
+                error=f"{type(exc).__name__}: {str(exc)[:120]}",
+                elapsed_ms=elapsed,
+            )
+
+    return Fetch(
+        requested_url=url,
+        error="too many redirects",
+        elapsed_ms=int((time.perf_counter() - start) * 1000),
+    )
 
 
 async def request_with_retries(

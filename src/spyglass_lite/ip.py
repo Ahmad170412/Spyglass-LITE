@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import json
+import os
 import time
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
@@ -38,7 +39,7 @@ def _json(result: Fetch) -> Any:
         return None
 
 
-async def resolve(target: str) -> str:
+async def resolve(target: str, cache: Any = None) -> str:
     """Accept an IP or a hostname and return an IPv4/IPv6 string."""
     value = str(target).strip().strip("[]")
     if not value:
@@ -47,13 +48,15 @@ async def resolve(target: str) -> str:
         return str(ipaddress.ip_address(value))
     except ValueError:
         pass
-    addresses = await _dns.a(value)
+    addresses = await _dns.a(value, cache=cache)
     if not addresses:
         raise InvalidTarget(f"could not resolve {target!r} to an address")
     return addresses[0]
 
 
-async def _geo(http: httpx.AsyncClient, ip: str, config: Config) -> tuple[Geo | None, str]:
+async def _geo(
+    http: httpx.AsyncClient, ip: str, config: Config, cache: Any = None
+) -> tuple[Geo | None, str]:
     """Two geolocation opinions, primary first.
 
     ipwho.is is primary because it is HTTPS and does not rate-limit per minute
@@ -115,9 +118,22 @@ def _timezone(value: Any) -> str:
     return str(value or "")
 
 
-async def _internetdb(http: httpx.AsyncClient, ip: str, config: Config) -> Mapping[str, Any] | None:
+async def _internetdb(
+    http: httpx.AsyncClient, ip: str, config: Config, cache: Any = None
+) -> Mapping[str, Any] | None:
+    from ._cache import MISSING
+
+    cache_key = cache.key("internetdb", ip) if cache is not None else None
+    if cache is not None and cache_key is not None:
+        cached = cache.get(cache_key)
+        if cached is not MISSING:
+            return cached
     result = await fetch(http, "GET", f"{_INTERNETDB}/{ip}", timeout=config.timeout)
     data = _json(result)
+    out = None if not isinstance(data, Mapping) or "detail" in data and "ip" not in data else data
+    if cache is not None and cache_key is not None:
+        cache.set(cache_key, out)
+    return out
     if not isinstance(data, Mapping):
         return None
     # A miss is {"detail": "No information available..."}; that is different
@@ -131,25 +147,43 @@ async def scan(
     http: httpx.AsyncClient,
     target: str,
     config: Config,
+    cache: Any = None,
     *,
     whois: bool = True,
     ports: bool = True,
 ) -> IpResult:
     """Run every IP check for one address or hostname."""
     started = time.perf_counter()
-    ip = await resolve(target)
+    ip = await resolve(target, cache=cache)
 
     is_domain = ip != str(target).strip().strip("[]")
-    geo_task = _geo(http, ip, config)
-    rdns_task = _dns.reverse(ip)
-    whois_task = _whois.address(ip) if whois else _empty()
-    netdb_task = _internetdb(http, ip, config) if ports else _empty()
-    a_task = _dns.a(target) if is_domain else _empty()
+    from ._cache import MISSING
+
+    geo_cache_key = cache.key("geo", ip) if cache is not None else None
+    cached_geo = MISSING
+    if cache is not None and geo_cache_key is not None:
+        cached_geo = cache.get(geo_cache_key)
+
+    async def _cached_geo() -> tuple[Geo | None, str]:
+        if isinstance(cached_geo, dict) and cached_geo:
+            return Geo(**{k: v for k, v in cached_geo.items() if k in Geo.__dataclass_fields__}), ""
+        if cached_geo is None:
+            return None, "geolocation unavailable"
+        return await _geo(http, ip, config)
+
+    geo_task = _geo(http, ip, config) if cached_geo is MISSING else _cached_geo()
+    rdns_task = _dns.reverse(ip, cache=cache)
+    whois_task = _whois.address(ip, cache=cache) if whois else _empty()
+    netdb_task = _internetdb(http, ip, config, cache=cache) if ports else _empty()
+    a_task = _dns.a(target, cache=cache) if is_domain else _empty()
 
     geo_pair, hostname, who, netdb, a_records = await asyncio.gather(
         geo_task, rdns_task, whois_task, netdb_task, a_task
     )
     geo, geo_error = geo_pair
+
+    if cache is not None and geo_cache_key is not None and cached_geo is MISSING:
+        cache.set(geo_cache_key, geo.to_dict() if geo is not None else None)
 
     result = IpResult(
         ip=ip,
@@ -171,6 +205,38 @@ async def scan(
         ]
         result.cpes = sorted({c for c in netdb.get("cpes") or [] if isinstance(c, str)})[:10]
         result.tags = sorted({t for t in netdb.get("tags") or [] if isinstance(t, str)})
+
+    # Optional VirusTotal enrichment (needs VT_API_KEY).
+    vt_key = os.environ.get("VT_API_KEY", "").strip()
+    if vt_key and getattr(config, "enrich", False):
+        vt_result = await fetch(
+            http,
+            "GET",
+            f"https://www.virustotal.com/api/v3/ip_addresses/{ip}",
+            headers={"x-apikey": vt_key},
+            timeout=config.timeout,
+        )
+        if 200 <= vt_result.status < 300:
+            try:
+                parsed = json.loads(vt_result.text)
+            except ValueError:
+                parsed = None
+            if isinstance(parsed, Mapping):
+                data = parsed.get("data", {}).get("attributes", {})
+                for tag in data.get("tags") or []:
+                    if isinstance(tag, str) and tag not in result.tags:
+                        result.tags.append(tag)
+                stats = data.get("last_analysis_stats") or {}
+                malicious = stats.get("malicious", 0)
+                if malicious:
+                    result.tags.append(f"vt:malicious={malicious}")
+                reputation = data.get("reputation")
+                if (
+                    isinstance(reputation, int)
+                    and reputation < 0
+                    and "vt:low-reputation" not in result.tags
+                ):
+                    result.tags.append("vt:low-reputation")
 
     # Shodan's historical view is worth stating, because an absent port list
     # is not the same claim as "no ports are open".

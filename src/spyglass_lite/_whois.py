@@ -11,6 +11,7 @@ import asyncio
 import contextlib
 import re
 import time
+from typing import Any
 from urllib.parse import urlsplit
 
 # A WHOIS server that never stops sending is a memory-exhaustion bug, not a
@@ -110,12 +111,48 @@ def parse(text: str) -> dict[str, str]:
     return out
 
 
-async def address(ip: str, timeout: float = 12.0) -> dict[str, str]:
+async def domain(name: str, timeout: float = 12.0, cache: Any = None) -> dict[str, str]:
+    """WHOIS for a domain, following IANA's referral once."""
+    from ._cache import MISSING
+
+    name = name.strip().lower().rstrip(".")
+    if not name:
+        return {}
+    cache_key = cache.key("whois_domain", name) if cache is not None else None
+    if cache is not None and cache_key is not None:
+        cached = cache.get(cache_key)
+        if cached is not MISSING:
+            return dict(cached)
+    text = await _query("whois.iana.org", name, timeout)
+    referral = _server(
+        _first_match(text, r"^\s*refer\s*:\s*(\S+)") or _first_match(text, r"^\s*whois\s*:\s*(\S+)")
+    )
+    if referral and referral != "whois.iana.org":
+        detail = await _query(referral, name, timeout)
+        if detail:
+            text = text + "\n" + detail
+    result = parse(text)
+    if cache is not None and cache_key is not None:
+        cache.set(cache_key, result)
+    return result
+
+
+async def address(ip: str, timeout: float = 12.0, cache: Any = None) -> dict[str, str]:
     """WHOIS for an IP, following ARIN's referral once."""
+    from ._cache import MISSING
+
+    cache_key = cache.key("whois_ip", ip) if cache is not None else None
+    if cache is not None and cache_key is not None:
+        cached = cache.get(cache_key)
+        if cached is not MISSING:
+            return dict(cached)
     text = await _query("whois.arin.net", "n + " + ip.strip(), timeout)
     referral = _server(_first_match(text, r"^\s*(?:ReferralServer|refer)\s*:\s*(\S+)"))
     if referral and referral != "whois.arin.net":
         detail = await _query(referral, ip.strip(), timeout)
         if detail:
             text = text + "\n" + detail
-    return parse(text)
+    result = parse(text)
+    if cache is not None and cache_key is not None:
+        cache.set(cache_key, result)
+    return result

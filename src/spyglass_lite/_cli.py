@@ -24,7 +24,7 @@ import json
 import sys
 from typing import Any
 
-from . import __version__, asn, email, ip, phone, username
+from . import __version__, asn, domain, email, ip, phone, phone_info, username
 from .errors import SpyglassError
 
 
@@ -110,9 +110,20 @@ def _parser() -> argparse.ArgumentParser:
     net.add_argument("target", help="an IP, a prefix such as 1.1.1.0/24, or an AS number")
     net.add_argument("--json", action="store_true", help="machine-readable output")
 
+    dom = verbs.add_parser("domain", help="DNS, subdomains and WHOIS for a domain")
+    dom.add_argument("target")
+    dom.add_argument("--no-ct", action="store_true", help="skip Certificate Transparency lookup")
+    dom.add_argument("--no-whois", action="store_true", help="skip WHOIS")
+    dom.add_argument("--wordlist", action="store_true", help="brute-force common subdomain labels")
+    dom.add_argument("--json", action="store_true", help="machine-readable output")
+
     tel = verbs.add_parser("phone", help="carrier, region and line type (needs the [phone] extra)")
     tel.add_argument("target")
     tel.add_argument("--json", action="store_true", help="machine-readable output")
+
+    telinfo = verbs.add_parser("phone-info", help="offline provider/region info for a number")
+    telinfo.add_argument("target")
+    telinfo.add_argument("--json", action="store_true", help="machine-readable output")
 
     return parser
 
@@ -149,6 +160,15 @@ def _dispatch(args: argparse.Namespace) -> Any:
         return ip(args.target, whois=not args.no_whois, ports=not args.no_ports)
     if args.verb == "asn":
         return asn(args.target)
+    if args.verb == "domain":
+        return domain(
+            args.target,
+            ct=not args.no_ct,
+            whois=not args.no_whois,
+            wordlist=args.wordlist,
+        )
+    if args.verb == "phone-info":
+        return phone_info(args.target)
     return phone(args.target)
 
 
@@ -188,7 +208,9 @@ def _render(args: argparse.Namespace, result: Any) -> None:
         "email": _render_email,
         "ip": _render_ip,
         "asn": _render_asn,
+        "domain": _render_domain,
         "phone": _render_phone,
+        "phone-info": _render_phone,
     }[args.verb]
     lines = renderer(args, result)
     print("\n".join(lines))
@@ -280,6 +302,28 @@ def _render_asn(args: argparse.Namespace, result: Any) -> list[str]:
     lines.append(f"  rpki        {rpki}")
     if result.announced is not None:
         lines.append(f"  announced   {_flag(result.announced)}")
+    if result.errors:
+        lines.append(f"  errors      {len(result.errors)} (run with --json for detail)")
+    return lines
+
+
+def _render_domain(args: argparse.Namespace, result: Any) -> list[str]:
+    lines = [f"{result.domain}"]
+    if result.dns:
+        lines.append("  dns")
+        for record in result.dns:
+            lines.append(f"    {record.type:<6} {record.value}")
+    if result.subdomains:
+        lines.append(f"  subdomains ({len(result.subdomains)})")
+        for sub in result.subdomains[:40]:
+            ip_part = ", ".join(sub.ips) if sub.ips else "-"
+            lines.append(f"    {sub.host:<40} {ip_part}")
+        if len(result.subdomains) > 40:
+            lines.append(f"    … {len(result.subdomains) - 40} more")
+    if result.whois:
+        lines.append("  whois")
+        for key, value in list(result.whois.items())[:12]:
+            lines.append(f"    {key:<14} {value}")
     if result.errors:
         lines.append(f"  errors      {len(result.errors)} (run with --json for detail)")
     return lines

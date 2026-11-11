@@ -29,6 +29,7 @@ from typing import Any
 import httpx
 
 from . import asn as _asn
+from . import domain as _domain
 from . import email as _email
 from . import ip as _ip
 from . import phone as _phone
@@ -36,6 +37,7 @@ from . import username as _username
 from .config import Config
 from .models import (
     AsnResult,
+    DomainResult,
     EmailResult,
     IpResult,
     PhoneResult,
@@ -285,6 +287,9 @@ class Spyglass:
         with no recipe is reported inconclusive with the reason, never
         guessed.
         """
+        from ._cache import from_config
+
+        cache = from_config(self.config)
         async with self._http() as http:
             return await _email.scan(
                 http,
@@ -296,6 +301,7 @@ class Spyglass:
                 recipes_path=recipes_path,
                 sites=sites,
                 dns_timeout=dns_timeout,
+                cache=cache,
             )
 
     def email(
@@ -336,8 +342,11 @@ class Spyglass:
         ``ports=False`` skips the passive Shodan InternetDB lookup, and
         ``whois=False`` skips the WHOIS query; both are on by default.
         """
+        from ._cache import from_config
+
+        cache = from_config(self.config)
         async with self._http() as http:
-            return await _ip.scan(http, target, self.config, whois=whois, ports=ports)
+            return await _ip.scan(http, target, self.config, whois=whois, ports=ports, cache=cache)
 
     def ip(
         self,
@@ -360,6 +369,67 @@ class Spyglass:
         """Blocking :meth:`aasn`."""
         return _run_sync(lambda: self.aasn(target))
 
+    # ── domain ─────────────────────────────────────────────
+
+    async def adomain(
+        self,
+        target: str,
+        *,
+        ct: bool = True,
+        whois: bool = True,
+        resolve: bool = True,
+        wordlist: bool = False,
+        dns_timeout: float = 4.0,
+    ) -> DomainResult:
+        """Resolve DNS, discover subdomains and run WHOIS for a domain."""
+        from ._cache import from_config
+
+        cache = from_config(self.config)
+        async with self._http() as http:
+            return await _domain.scan(
+                http,
+                target,
+                self.config,
+                ct=ct,
+                whois=whois,
+                resolve=resolve,
+                wordlist=wordlist,
+                dns_timeout=dns_timeout,
+                cache=cache,
+            )
+
+    def domain(
+        self,
+        target: str,
+        *,
+        ct: bool = True,
+        whois: bool = True,
+        resolve: bool = True,
+        wordlist: bool = False,
+        dns_timeout: float = 4.0,
+    ) -> DomainResult:
+        """Blocking :meth:`adomain`; see there for the options."""
+        return _run_sync(
+            lambda: self.adomain(
+                target,
+                ct=ct,
+                whois=whois,
+                resolve=resolve,
+                wordlist=wordlist,
+                dns_timeout=dns_timeout,
+            )
+        )
+
+    # ── phone info ─────────────────────────────────────────
+
+    async def aphone_info(self, target: str) -> PhoneResult:
+        """Offline provider/region info for a number (no network search)."""
+        return await self.aphone(target)
+
+    def phone_info(self, target: str) -> PhoneResult:
+        """Blocking :meth:`aphone_info`."""
+        return _run_sync(lambda: self.aphone_info(target))
+
     # ── phone ─────────────────────────────────────────────
 
     async def aphone(self, target: str) -> PhoneResult:
@@ -369,6 +439,31 @@ class Spyglass:
     def phone(self, target: str) -> PhoneResult:
         """Blocking :meth:`aphone`."""
         return _run_sync(lambda: self.aphone(target))
+
+    # ── convenience ───────────────────────────────────────
+
+    def detect(self, target: str) -> str:
+        """Guess the kind of a target (see :func:`spyglass_lite.detect`)."""
+        from . import detect as _detect
+
+        return _detect(target)
+
+    def lookup(self, target: str, *, kind: str = "auto", **options: Any) -> Any:
+        """Dispatch to the right module for a target, using this client's config."""
+        from . import detect as _detect
+
+        chosen = _detect(target) if kind == "auto" else kind
+        if chosen == "email":
+            return self.email(target, **options)
+        if chosen == "phone":
+            return self.phone(target)
+        if chosen == "ip":
+            return self.ip(target, **options)
+        if chosen == "asn":
+            return self.asn(target)
+        if chosen == "domain":
+            return self.domain(target, **options)
+        return self.username(target, **options)
 
     # ── lifecycle ─────────────────────────────────────────
 

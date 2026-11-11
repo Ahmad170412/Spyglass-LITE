@@ -4,9 +4,17 @@ All notable changes to `spyglass-lite` are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.0] — 2026-11-11
 
 ### Added
+
+- `domain()` — passive domain intelligence: DNS records (A/AAAA/MX/TXT/NS/CNAME/SOA/CAA), subdomain discovery via Certificate Transparency (crt.sh) plus an opt-in common-label wordlist, and domain WHOIS. New `DomainResult`, `DnsRecord` and `Subdomain` models.
+- `phone_info()` — offline provider/region info for a number (alias of `phone()`); also exposed as the `phone-info` CLI verb.
+- `domain` and `phone-info` verbs in `python -m spyglass_lite`, with `--no-ct`, `--no-whois`, `--wordlist` flags for `domain`.
+- SSRF defence now resolves hostnames and rejects non-public resolved addresses, and validates every redirect hop (closes the DNS-rebinding and redirect-bypass gaps from audit F-02).
+- Usability: `detect()` and `lookup()` (plus `client.detect()`/`client.lookup()`) for guessable, one-call dispatch; `Model.to_json()` for easy serialisation; `sg.lookup`/`sg.detect` documented in the README.
+- Disk cache: opt-in file-backed TTL cache (`Config.cache=True` or `cache_dir=...`) for DNS, WHOIS, geolocation, InternetDB and Certificate Transparency results; defaults to off to keep scans stateless.
+- Optional API-key enrichments (opt-in via `Config.enrich=True`): HaveIBeenPwned breach lookup when `HIBP_API_KEY` is set, VirusTotal IP reputation when `VT_API_KEY` is set.
 
 - `sites=` on `username()` — restrict a scan to display names, domains or full URLs (`sites=["github.com", "https://x.com/"]`), merged with `only=`.
 - `sites=` on `email()` — inline recipe dicts or bare domains matched against the bundled recipes; domains without a recipe are reported inconclusive with the reason.
@@ -19,6 +27,7 @@ All notable changes to `spyglass-lite` are recorded here. The format follows
 
 ### Changed
 
+- Version corrected to `1.1.0`. The working tree had been left at `0.9.0` after the `0.9.0b0` release, so the accumulated feature set is released as the next minor version rather than reusing `0.9.0`.
 - Catch-all control probes keep a 10s timeout floor even when `timeout=` is configured lower: they are the slowest request in a scan (one per cached rule) and a short timeout there turned real profiles into `unknown`.
 - Verification now demotes search/listing pages — search query parameters carrying the handle (`scholar.google.com?q=…`), listing routes (`/search`, `/filter`), and results-style titles — checked against both the reported profile URL and the fetched URL, where these previously read as false-positive profiles.
 - Handle-echo confidence upgrades count visible-copy mentions only; `href`/`src`/URL echoes no longer raise a page's confidence. The found/unknown gate still counts every echo: requiring three *visible* mentions was tested live and cost real accounts.

@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import re
 import time
 from collections.abc import Iterable, Mapping, Sequence
@@ -220,6 +221,35 @@ async def _breaches(http: httpx.AsyncClient, address: str, config: Config) -> Br
                     if value and key not in {"database", "source", "breach", "_id"}:
                         fields.add(str(key).replace("_", " ").title())
 
+    # Optional HaveIBeenPwned enrichment (needs HIBP_API_KEY).
+    hibp_key = os.environ.get("HIBP_API_KEY", "").strip()
+    if hibp_key and getattr(config, "enrich", False):
+        encoded = quote(address, safe="")
+        hibp_result = await fetch(
+            http,
+            "GET",
+            f"https://haveibeenpwned.com/api/v3/breachedaccount/{encoded}?truncateResponse=false",
+            headers={"hibp-api-key": hibp_key, "user-agent": "spyglass-lite"},
+            timeout=config.timeout,
+        )
+        if 200 <= hibp_result.status < 300:
+            try:
+                parsed = json.loads(hibp_result.text)
+            except ValueError:
+                parsed = None
+            if isinstance(parsed, list):
+                found += len(parsed)
+                for entry in parsed:
+                    if isinstance(entry, Mapping):
+                        name = entry.get("Name") or entry.get("Title")
+                        if name:
+                            sources.add(str(name))
+                        for dc in entry.get("DataClasses") or []:
+                            fields.add(str(dc))
+        elif hibp_result.status not in (404,):
+            # 404 means "no breaches"; anything else is an error worth noting.
+            pass
+
     return Breach(
         found=found,
         sources=sorted(sources)[:10],
@@ -383,6 +413,7 @@ async def scan(
     http: httpx.AsyncClient,
     target: str,
     config: Config,
+    cache: Any = None,
     *,
     gravatar: bool = True,
     breaches: bool = True,
@@ -402,9 +433,9 @@ async def scan(
     local, domain, normalized = parse(target)
 
     mx, spf_records, dmarc_records = await asyncio.gather(
-        _dns.mx(domain, timeout=dns_timeout),
-        _dns.txt(domain, timeout=dns_timeout),
-        _dns.txt("_dmarc." + domain, timeout=dns_timeout),
+        _dns.mx(domain, timeout=dns_timeout, cache=cache),
+        _dns.txt(domain, timeout=dns_timeout, cache=cache),
+        _dns.txt("_dmarc." + domain, timeout=dns_timeout, cache=cache),
     )
 
     mx_records = [MxRecord(host=host, priority=priority) for priority, host in mx]

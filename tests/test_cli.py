@@ -69,7 +69,7 @@ def test_version_exits_zero(capsys):
     with pytest.raises(SystemExit) as exit_info:
         cli.main(["--version"])
     assert exit_info.value.code == 0
-    assert "spyglass-lite 0.9.0b0" in capsys.readouterr().out
+    assert "spyglass-lite 1.1.0" in capsys.readouterr().out
 
 
 def test_a_verb_is_required(capsys):
