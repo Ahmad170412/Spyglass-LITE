@@ -132,7 +132,7 @@ async def reverse(ip: str, *, timeout: float = 4.0, cache: Any = None) -> str:
             asyncio.to_thread(socket.gethostbyaddr, ip), timeout=timeout
         )
         result = name
-    except (OSError, UnicodeError, asyncio.TimeoutError):
+    except (TimeoutError, OSError, UnicodeError):
         result = ""
     if cache is not None and cache_key is not None:
         cache.set(cache_key, result)

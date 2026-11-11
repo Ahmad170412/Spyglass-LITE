@@ -319,7 +319,7 @@ async def matrix(handles: list[str]) -> dict[str, dict[str, bool | None]]:
                     row[oracle.domain] = await asyncio.wait_for(
                         oracle.check(client, handle), timeout=30
                     )
-                except (asyncio.TimeoutError, httpx.HTTPError):
+                except (TimeoutError, httpx.HTTPError):
                     row[oracle.domain] = None
             results[handle] = row
             print(

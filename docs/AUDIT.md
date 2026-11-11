@@ -323,7 +323,7 @@ version inspection plus advisory lookups, not an automated scan. **Follow-up:** 
 | Event loop | `asyncio.run`; Proactor loop on Windows supports TCP | No selector-only API used |
 | Host normalisation | hosts/domains lowercased before comparison | Case-insensitive by construction |
 | Bench paths | temp dirs via `tempfile`; upstream checkout configurable | Fixed (F-08) |
-| CI matrix | Linux 3.10–3.13, macOS 3.11, **Windows 3.10 and 3.13** | Added; not yet executed |
+| CI matrix | Linux 3.11–3.13, macOS 3.11, **Windows 3.11 and 3.13** | Added; not yet executed |
 
 **Honest limitation:** Windows was never tested before this audit, and it has not
 been executed on Windows by the author either — the runner was added and the source

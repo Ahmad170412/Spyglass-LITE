@@ -33,13 +33,13 @@ All notable changes to `spyglass-lite` are recorded here. The format follows
 - Handle-echo confidence upgrades count visible-copy mentions only; `href`/`src`/URL echoes no longer raise a page's confidence. The found/unknown gate still counts every echo: requiring three *visible* mentions was tested live and cost real accounts.
 - Catch-all control probes are cached per rule for 10 minutes, so repeated scans skip the extra request per hit.
 - Transport failures (connect timeouts, refused connections, DNS failures) are no longer retried — only HTTP status transients (429/5xx) are, roughly halving worst-case scan time on large site lists.
-- CI now runs on Windows (Python 3.10 and 3.13) in addition to Linux and macOS, and lints `scripts/` alongside the package. `compare.py` moved from the repository root into `scripts/`.
+- CI now runs on Windows (Python 3.11 and 3.13) in addition to Linux and macOS, and lints `scripts/` alongside the package. `compare.py` moved from the repository root into `scripts/`.
 
 ### Fixed
 
 - `asn()` now resolves the origin AS and holder for a **prefix** query (`1.1.1.0/24`). RIPEStat answers prefix queries with `resource`/`asns` rather than the covering `prefixes` list an address query returns; only the address shape was handled, so a prefix silently produced no origin at all.
 - Response bodies are streamed and cut off at 200 KB *while reading*. Previously the whole response was decoded first and truncated afterwards, so one hostile host could allocate unbounded memory inside a scan running fifty requests at once.
-- The declared `dnspython` floor allowed versions below 2.9.0, which are affected by CVE-2026-114605. Python 3.11+ now requires `>=2.9.0`; Python 3.10 (end of life October 2026) keeps `>=2.6,<2.9` because 2.9.0 requires 3.11. See `docs/AUDIT.md` F-12.
+- The declared `dnspython` floor allowed versions below 2.9.0, which are affected by CVE-2026-114605. The package now requires Python 3.11+ and `dnspython>=2.9.0` unconditionally; the Python 3.10 fallback split was dropped because 2.9.0 requires 3.11. See `docs/AUDIT.md` F-12.
 - WHOIS reads are capped at 256 KB with an overall deadline, and CR/LF is stripped from the query: a hostile registry can no longer stream until the process runs out of memory, hold a connection open with a byte every few seconds, or inject a second protocol command.
 - Title extraction no longer uses a backtracking-capable pattern. The old expression was quadratic on a body containing many unterminated `<title` tags.
 - `_dns.reverse()` is bounded by its `timeout=`; `socket.gethostbyaddr` previously inherited the OS resolver's patience, which is much longer on Windows than on Unix.

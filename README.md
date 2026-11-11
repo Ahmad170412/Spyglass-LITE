@@ -7,7 +7,7 @@
 ![CI Status](https://img.shields.io/github/actions/workflow/status/Ahmad170412/spyglass-lite/ci.yml?branch=main&style=flat-square)
 ![Release](https://img.shields.io/github/v/release/Ahmad170412/spyglass-lite?style=flat-square)
 ![License](https://img.shields.io/github/license/Ahmad170412/spyglass-lite?style=flat-square)
-![Python](https://img.shields.io/badge/python-3.10+-blue?style=flat-square)
+![Python](https://img.shields.io/badge/python-3.11+-blue?style=flat-square)
 
 [Quick Start](#quick-start) · [Docs](docs/) · [Report Bug](https://github.com/Ahmad170412/spyglass-lite/issues) · [Request Feature](https://github.com/Ahmad170412/spyglass-lite/issues)
 

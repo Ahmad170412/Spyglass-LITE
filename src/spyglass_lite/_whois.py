@@ -32,7 +32,7 @@ async def _query(server: str, payload: str, timeout: float = 12.0) -> str:
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(server, 43), timeout=timeout
         )
-    except (OSError, asyncio.TimeoutError):
+    except (TimeoutError, OSError):
         return ""
     chunks: list[bytes] = []
     total = 0
@@ -48,7 +48,7 @@ async def _query(server: str, payload: str, timeout: float = 12.0) -> str:
                 break
             chunks.append(chunk)
             total += len(chunk)
-    except (OSError, asyncio.TimeoutError):
+    except (TimeoutError, OSError):
         pass
     finally:
         writer.close()

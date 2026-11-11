@@ -23,7 +23,7 @@ import gzip
 import json
 import sys
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -264,7 +264,7 @@ def build(refresh: bool) -> int:
     payload = {
         "meta": {
             "version": 1,
-            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "sources": SOURCES,
             "counts": {
                 "sites": len(merged),

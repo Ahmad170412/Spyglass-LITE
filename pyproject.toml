@@ -9,7 +9,7 @@ description = "Importable OSINT recon — username, email, IP, ASN and phone, wi
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Atheer" }]
 keywords = [
     "osint", "recon", "reconnaissance", "username", "email",
@@ -91,15 +91,15 @@ filterwarnings = ["error::DeprecationWarning:spyglass_lite.*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 src = ["src", "tests", "bench", "scripts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
-ignore = ["E501"]
+ignore = ["E501", "ASYNC109"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 strict = false
 warn_unused_ignores = true
 warn_redundant_casts = true
